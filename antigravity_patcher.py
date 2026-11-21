@@ -153,8 +153,22 @@ def scan(install_root):
             print(f"    {s}")
 
 
-def patch(install_root, dry_run=False):
-    targets = find_targets(install_root)
+def is_cli(path):
+    return os.path.normcase(os.path.abspath(path)) == os.path.normcase(os.path.abspath(CLI_BIN))
+
+
+def unpatched(targets):
+    result = []
+    for t in targets:
+        data = open(t, "rb").read()
+        if any(old in data for old, _ in PATCHES):
+            result.append(t)
+    return result
+
+
+def patch(install_root, dry_run=False, targets=None):
+    if targets is None:
+        targets = find_targets(install_root)
     if not targets:
         print("Бинарники не найдены.")
         return False
@@ -185,9 +199,8 @@ def patch(install_root, dry_run=False):
             continue
 
         backup = t + ".bak"
-        if not os.path.exists(backup):
-            shutil.copy2(t, backup)
-            print(f"  бэкап: {os.path.basename(backup)}")
+        shutil.copy2(t, backup)
+        print(f"  бэкап: {os.path.basename(backup)}")
 
         old_hash = sha256(t)
         try:
@@ -261,38 +274,11 @@ def launch(install_root, proxy_port=None):
     print(f"Antigravity запущен (PID {proc.pid})")
 
 
-def needs_patch(install_root):
-    targets = find_targets(install_root)
-    for t in targets:
-        data = open(t, "rb").read()
-        for old, new in PATCHES:
-            if old in data:
-                return True
-    return False
-
-
-def watchdog_check(install_root):
-    if not os.path.isdir(install_root):
-        return
-    if not needs_patch(install_root):
-        return
-
-    if is_process_running("Antigravity.exe"):
-        log_msg("Обнаружен непропатченный бинарник, но Antigravity.exe запущен — пропускаю до закрытия")
-        return
-
-    log_msg("Обнаружен непропатченный бинарник — перепатчиваю")
-
-    ls_name = "language_server.exe"
-    if is_process_running(ls_name):
-        log_msg(f"Завершаю {ls_name}")
-        kill_process(ls_name)
-        import time; time.sleep(2)
-
+def patch_logged(install_root, targets):
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     try:
-        result = patch(install_root)
+        result = patch(install_root, targets=targets)
     finally:
         output = sys.stdout.getvalue()
         sys.stdout = old_stdout
@@ -301,6 +287,34 @@ def watchdog_check(install_root):
         log_msg("Перепатчено:\n" + output.strip())
     else:
         log_msg("Патч не применился:\n" + output.strip())
+
+
+def watchdog_check(install_root):
+    pending = unpatched(find_targets(install_root))
+    if not pending:
+        return
+
+    cli = [t for t in pending if is_cli(t)]
+    desktop = [t for t in pending if not is_cli(t)]
+
+    if cli:
+        if is_process_running("agy.exe"):
+            log_msg("Непропатченный agy.exe, но agy сейчас работает — пропускаю до завершения")
+        else:
+            log_msg("Непропатченный agy.exe — перепатчиваю")
+            patch_logged(install_root, cli)
+
+    if desktop:
+        if is_process_running("Antigravity.exe"):
+            log_msg("Непропатченный бинарник Antigravity, но приложение открыто — пропускаю до закрытия")
+            return
+        log_msg("Непропатченный бинарник Antigravity — перепатчиваю")
+        ls_name = "language_server.exe"
+        if is_process_running(ls_name):
+            log_msg(f"Завершаю {ls_name}")
+            kill_process(ls_name)
+            import time; time.sleep(2)
+        patch_logged(install_root, desktop)
 
 
 def task_install():
@@ -440,15 +454,18 @@ def main():
         install = resolve_install(extra)
         ls_name = "language_server.exe"
         ag_name = "Antigravity.exe"
+        targets = None
         if is_process_running(ag_name):
-            print(f"{ag_name} запущен. Закрой Antigravity и попробуй снова.")
-            sys.exit(1)
-        if is_process_running(ls_name):
+            targets = [t for t in find_targets(install) if is_cli(t)]
+            print(f"{ag_name} запущен — его файлы пропускаю, закрой его и повтори для полного патча.")
+            if not targets:
+                sys.exit(1)
+        elif is_process_running(ls_name):
             print(f"{ls_name} запущен — завершаю...")
             kill_process(ls_name)
             import time; time.sleep(1)
         print(f"Патч {install}:")
-        if patch(install):
+        if patch(install, targets=targets):
             print("Готово.")
         else:
             print("Ничего не пропатчено.")
@@ -488,8 +505,7 @@ def main():
         launch(install, port)
 
     elif cmd == "watchdog":
-        install = resolve_install(extra)
-        watchdog_check(install)
+        watchdog_check(extra or INSTALL_DIR)
 
     elif cmd == "watchdog-install":
         task_install()
