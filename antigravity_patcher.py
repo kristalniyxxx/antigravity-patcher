@@ -7,11 +7,15 @@ import subprocess
 import glob
 import io
 
-if sys.stdout.encoding and sys.stdout.encoding.lower().replace("-", "") != "utf8":
+if sys.stdout is None or sys.stderr is None:
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+elif sys.stdout.encoding and sys.stdout.encoding.lower().replace("-", "") != "utf8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 INSTALL_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Antigravity")
+CLI_BIN = os.path.join(os.environ.get("LOCALAPPDATA", ""), "agy", "bin", "agy.exe")
 
 PATCHES = [
     (b"ineligible", b"inexigible"),
@@ -58,6 +62,8 @@ def find_targets(install_root):
         p = os.path.join(gemini_bin, name)
         if os.path.isfile(p) and p not in targets:
             targets.append(p)
+    if os.path.isfile(CLI_BIN) and CLI_BIN not in targets:
+        targets.append(CLI_BIN)
     return targets
 
 
@@ -181,7 +187,11 @@ def patch(install_root, dry_run=False):
             print(f"  бэкап: {os.path.basename(backup)}")
 
         old_hash = sha256(t)
-        write_atomic(t, modified)
+        try:
+            write_atomic(t, modified)
+        except OSError as e:
+            print(f"  {name}: не записан, файл занят ({e.strerror}) — закрой программу и повтори")
+            continue
         new_hash = sha256(t)
         print(f"  {name}: записано")
         print(f"    было:  {old_hash}")
@@ -391,7 +401,8 @@ Watchdog (автопатч после обновлений):
   python antigravity_patcher.py watchdog-status    — показать состояние задачи
   python antigravity_patcher.py watchdog-log       — показать последние записи лога
 
-По умолчанию ищет установку в %LOCALAPPDATA%\\Programs\\Antigravity.
+По умолчанию ищет установку в %LOCALAPPDATA%\\Programs\\Antigravity
+и консольный agy.exe в %LOCALAPPDATA%\\agy\\bin.
 Можно указать другой путь вторым аргументом для scan/patch/unpatch.
 """)
 
@@ -426,13 +437,13 @@ def main():
         install = resolve_install(extra)
         ls_name = "language_server.exe"
         ag_name = "Antigravity.exe"
+        if is_process_running(ag_name):
+            print(f"{ag_name} запущен. Закрой Antigravity и попробуй снова.")
+            sys.exit(1)
         if is_process_running(ls_name):
             print(f"{ls_name} запущен — завершаю...")
             kill_process(ls_name)
             import time; time.sleep(1)
-        if is_process_running(ag_name):
-            print(f"{ag_name} запущен. Закрой Antigravity и попробуй снова.")
-            sys.exit(1)
         print(f"Патч {install}:")
         if patch(install):
             print("Готово.")
