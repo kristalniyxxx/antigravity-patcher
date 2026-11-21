@@ -78,17 +78,10 @@ def sha256(path):
 def replace_all(data, old, new):
     if len(old) != len(new):
         raise ValueError(f"длины не совпадают: {len(old)} != {len(new)}")
-    count = 0
-    i = 0
-    result = bytearray(data)
-    while i + len(old) <= len(result):
-        if result[i:i + len(old)] == old:
-            result[i:i + len(new)] = new
-            count += 1
-            i += len(old)
-        else:
-            i += 1
-    return bytes(result), count
+    count = data.count(old)
+    if count == 0:
+        return data, 0
+    return data.replace(old, new), count
 
 
 def write_atomic(target, data):
