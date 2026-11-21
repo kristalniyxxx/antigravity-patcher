@@ -292,11 +292,14 @@ def watchdog_check(install_root):
 
 def task_install():
     script = os.path.abspath(__file__)
-    python = sys.executable
+    python_dir = os.path.dirname(sys.executable)
+    pythonw = os.path.join(python_dir, "pythonw.exe")
+    if not os.path.isfile(pythonw):
+        pythonw = sys.executable
 
     work_dir = os.path.dirname(script)
     ps_content = (
-        f"$action = New-ScheduledTaskAction -Execute '{python}' "
+        f"$action = New-ScheduledTaskAction -Execute '{pythonw}' "
         f"-Argument '\"{script}\" watchdog' -WorkingDirectory '{work_dir}'\n"
         f"$trigger1 = New-ScheduledTaskTrigger -Once -At (Get-Date) "
         f"-RepetitionInterval (New-TimeSpan -Minutes 5)\n"
