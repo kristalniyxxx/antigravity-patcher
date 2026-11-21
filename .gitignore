@@ -1,0 +1,13 @@
+# --- claude-artifacts: begin ---
+CLAUDE.md
+.claude/
+memory/
+scratchpad/
+# --- claude-artifacts: end ---
+
+.env
+.env.keys
+*.log
+__pycache__/
+*.pyc
+*.bak
