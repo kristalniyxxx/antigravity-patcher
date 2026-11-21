@@ -107,11 +107,14 @@ def write_atomic(target, data):
         raise
 
 
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def is_process_running(name):
     try:
         out = subprocess.run(
             ["tasklist", "/FI", f"IMAGENAME eq {name}", "/NH"],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=10, creationflags=NO_WINDOW
         )
         return name.lower() in out.stdout.lower()
     except Exception:
@@ -121,7 +124,7 @@ def is_process_running(name):
 def kill_process(name):
     subprocess.run(
         ["taskkill", "/F", "/IM", name],
-        capture_output=True, timeout=10
+        capture_output=True, timeout=10, creationflags=NO_WINDOW
     )
 
 
