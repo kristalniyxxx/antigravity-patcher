@@ -274,6 +274,10 @@ def watchdog_check(install_root):
     if not needs_patch(install_root):
         return
 
+    if is_process_running("Antigravity.exe"):
+        log_msg("Обнаружен непропатченный бинарник, но Antigravity.exe запущен — пропускаю до закрытия")
+        return
+
     log_msg("Обнаружен непропатченный бинарник — перепатчиваю")
 
     ls_name = "language_server.exe"
@@ -281,10 +285,6 @@ def watchdog_check(install_root):
         log_msg(f"Завершаю {ls_name}")
         kill_process(ls_name)
         import time; time.sleep(2)
-
-    if is_process_running("Antigravity.exe"):
-        log_msg("Antigravity.exe запущен — пропускаю (патч возможен только с закрытым приложением)")
-        return
 
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
